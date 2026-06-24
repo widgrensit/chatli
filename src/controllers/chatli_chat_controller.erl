@@ -136,7 +136,7 @@ get_history(#{
 get_chat_messages([], _, Acc) ->
     Acc;
 get_chat_messages([#{id := ChatId} | T], Timestamp, Acc) ->
-    case chatli_db:get_filtered_messages(ChatId, [{<<"after">>, integer_to_binary(Timestamp)}]) of
+    case chatli_db:get_filtered_messages(ChatId, #{<<"after">> => integer_to_binary(Timestamp)}) of
         {ok, Messages} ->
             get_chat_messages(T, Timestamp, Messages ++ Acc);
         _ ->
@@ -163,8 +163,8 @@ encode(Message) ->
 
 get_archive(#{
     bindings := #{<<"chatid">> := ChatId},
-    parsed_qs := []
-}) ->
+    parsed_qs := QS
+}) when map_size(QS) =:= 0 ->
     {ok, Result} = chatli_db:get_chat_messages(ChatId),
     {json, 200, #{}, Result};
 get_archive(#{
@@ -347,14 +347,15 @@ attachments_message(Id, ChatId, Sender, Attachments, UserAgent) ->
 save_file([], Acc, _) ->
     Acc;
 save_file([{file, Bytes, Mime, ByteSize} | T], Acc, ChatId) ->
-    UUID = binary_to_list(chatli_uuid:get_v4()),
+    UUID = chatli_uuid:get_v4(),
     {ok, Path} = application:get_env(chatli, download_path),
-    {ok, Dir} = file:get_cwd(),
-    case file:write_file(Path ++ UUID, Bytes) of
+    File = Path ++ binary_to_list(UUID),
+    ok = filelib:ensure_dir(File),
+    case file:write_file(File, Bytes) of
         ok ->
             case chatli_db:create_attachment(UUID, ChatId, Mime, ByteSize) of
                 ok ->
-                    save_file(T, [{ok, list_to_binary(UUID), Mime, ByteSize} | Acc], ChatId);
+                    save_file(T, [{ok, UUID, Mime, ByteSize} | Acc], ChatId);
                 _ ->
                     save_file([{error, create_attachment} | T], Acc, ChatId)
             end;

@@ -1,2 +1,6 @@
 _build/
+_checkouts/
 priv/attachments/*
+CLAUDE.md
+.claude/
+*.crashdump

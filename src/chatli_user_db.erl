@@ -10,44 +10,64 @@
     get_all_other/1
 ]).
 
-create(#{
-    id := Id,
-    username := Username,
-    phone_number := PhoneNumber,
-    email := Email,
-    password := Password
-}) ->
-    SQL =
-        <<"INSERT INTO chatli_user (id, username, phone_number, email, password) VALUES ($1, $2, $3, $4, $5)">>,
-    chatli_db:query1(SQL, [Id, Username, PhoneNumber, Email, Password]).
+-include_lib("kura/include/kura.hrl").
+
+create(Params) ->
+    CS = kura_changeset:cast(chatli_user, #{}, Params, [id, username, phone_number, email, password]),
+    case chatli_repo:insert(CS) of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.
 
 get(UserId) ->
-    SQL = <<"SELECT id, username, phone_number, email FROM chatli_user WHERE id = $1">>,
-    chatli_db:query1(SQL, [UserId]).
+    Q = kura_query:from(chatli_user),
+    Q1 = kura_query:select(Q, [id, username, phone_number, email]),
+    Q2 = kura_query:where(Q1, {id, UserId}),
+    case chatli_repo:one(Q2) of
+        {ok, Row} -> {ok, Row};
+        {error, not_found} -> undefined;
+        {error, _} = Error -> Error
+    end.
 
 get_login(Username, Password) ->
-    SQL = <<"SELECT * FROM chatli_user WHERE username = $1 AND password = $2">>,
-    chatli_db:query1(SQL, [Username, Password]).
+    Q = kura_query:from(chatli_user),
+    Q1 = kura_query:where(Q, {username, Username}),
+    Q2 = kura_query:where(Q1, {password, Password}),
+    case chatli_repo:one(Q2) of
+        {ok, Row} -> {ok, Row};
+        {error, not_found} -> undefined;
+        {error, _} = Error -> Error
+    end.
 
-find(Type, Value) ->
-    SQL = <<"SELECT * FROM chatli_user WHERE ">>,
-    WhereSQL =
-        case Type of
-            <<"email">> ->
-                <<"email = $1">>;
-            <<"phone_number">> ->
-                <<"phone_number = $1">>
-        end,
-    chatli_db:query1(<<SQL/binary, WhereSQL/binary>>, [Value]).
+find(<<"email">>, Value) ->
+    case chatli_repo:get_by(chatli_user, [{email, Value}]) of
+        {ok, Row} -> {ok, Row};
+        {error, not_found} -> undefined;
+        {error, _} = Error -> Error
+    end;
+find(<<"phone_number">>, Value) ->
+    case chatli_repo:get_by(chatli_user, [{phone_number, Value}]) of
+        {ok, Row} -> {ok, Row};
+        {error, not_found} -> undefined;
+        {error, _} = Error -> Error
+    end.
 
 delete(UserId) ->
-    SQL = <<"DELETE FROM chatli_user WHERE id = $1">>,
-    chatli_db:query1(SQL, [UserId]).
+    Q = kura_query:from(chatli_user),
+    Q1 = kura_query:where(Q, {id, UserId}),
+    case chatli_repo:delete_all(Q1) of
+        {ok, 1} -> ok;
+        {ok, 0} -> undefined;
+        {error, _} = Error -> Error
+    end.
 
 get_all() ->
-    SQL = <<"SELECT id, avatar, email, phone_number, username FROM chatli_user">>,
-    chatli_db:query(SQL, []).
+    Q = kura_query:from(chatli_user),
+    Q1 = kura_query:select(Q, [id, avatar, email, phone_number, username]),
+    chatli_repo:all(Q1).
 
 get_all_other(UserId) ->
-    SQL = <<"SELECT id, avatar, email, phone_number, username FROM chatli_user WHERE id != $1">>,
-    chatli_db:query(SQL, [UserId]).
+    Q = kura_query:from(chatli_user),
+    Q1 = kura_query:select(Q, [id, avatar, email, phone_number, username]),
+    Q2 = kura_query:where(Q1, {id, '!=', UserId}),
+    chatli_repo:all(Q2).

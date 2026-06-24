@@ -7,39 +7,39 @@
     get_all/1
 ]).
 
+-include_lib("kura/include/kura.hrl").
+
 upsert(DeviceId, UserId, Name) ->
     delete(DeviceId, UserId),
-    SQL =
-        <<
-            "INSERT INTO\n"
-            "               device\n"
-            "               (\n"
-            "                 id,\n"
-            "                 user_id,\n"
-            "                 name\n"
-            "               ) VALUES (\n"
-            "                 $1,\n"
-            "                 $2,\n"
-            "                 $3\n"
-            "               )"
-        >>,
-    chatli_db:query1(SQL, [DeviceId, UserId, Name]).
+    CS = kura_changeset:cast(device, #{}, #{
+        <<"id">> => DeviceId,
+        <<"user_id">> => UserId,
+        <<"name">> => Name
+    }, [id, user_id, name]),
+    case chatli_repo:insert(CS) of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.
 
 delete(DeviceId, UserId) ->
-    SQL =
-        <<
-            "DELETE FROM\n"
-            "                device\n"
-            "            WHERE\n"
-            "                id = $1 AND\n"
-            "                user_id = $2"
-        >>,
-    chatli_db:query(SQL, [DeviceId, UserId]).
+    Q = kura_query:from(device),
+    Q1 = kura_query:where(Q, {id, DeviceId}),
+    Q2 = kura_query:where(Q1, {user_id, UserId}),
+    chatli_repo:delete_all(Q2).
 
 get(DeviceId, UserId) ->
-    SQL = <<"SELECT id, name FROM device WHERE id = $1 AND user_id = $2">>,
-    chatli_db:query1(SQL, [DeviceId, UserId]).
+    Q = kura_query:from(device),
+    Q1 = kura_query:select(Q, [id, name]),
+    Q2 = kura_query:where(Q1, {id, DeviceId}),
+    Q3 = kura_query:where(Q2, {user_id, UserId}),
+    case chatli_repo:one(Q3) of
+        {ok, Row} -> {ok, Row};
+        {error, not_found} -> undefined;
+        {error, _} = Error -> Error
+    end.
 
 get_all(UserId) ->
-    SQL = <<"SELECT id, name FROM device WHERE user_id = $1">>,
-    chatli_db:query(SQL, [UserId]).
+    Q = kura_query:from(device),
+    Q1 = kura_query:select(Q, [id, name]),
+    Q2 = kura_query:where(Q1, {user_id, UserId}),
+    chatli_repo:all(Q2).

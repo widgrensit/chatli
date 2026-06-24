@@ -19,254 +19,194 @@
     get_user_callbacks/1,
     delete_callback/1,
     create_attachment/4,
-    get_attachment/2,
-    query/2,
-    query1/2
+    get_attachment/2
 ]).
 
-create_message(#{
-    <<"id">> := Id,
-    <<"chat_id">> := ChatId,
-    <<"payload">> := Payload,
-    <<"sender">> := UserId,
-    <<"sender_info">> := SenderInfoJson,
-    <<"timestamp">> := Timestamp,
-    <<"type">> := Type,
-    <<"action">> := Action
-}) ->
-    SQL =
-        <<
-            "INSERT INTO message (id,\n"
-            "                                  chat_id,\n"
-            "                                  payload,\n"
-            "                                  sender,\n"
-            "                                  timestamp,\n"
-            "                                  type,\n"
-            "                                  action,\n"
-            "                                  sender_info)\n"
-            "             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
-        >>,
-    query1(SQL, [Id, ChatId, Payload, UserId, Timestamp, Type, Action, SenderInfoJson]).
+-include_lib("kura/include/kura.hrl").
+
+%% Messages
+
+create_message(Params) ->
+    CS = kura_changeset:cast(message, #{}, encode_payload(Params), [
+        id, chat_id, payload, sender, timestamp, type, action, sender_info
+    ]),
+    case chatli_repo:insert(CS) of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.
+
+%% A text payload is a JSON string scalar; kura casts jsonb binaries as
+%% JSON text, so encode it before the changeset.
+encode_payload(#{<<"payload">> := P} = Params) when is_binary(P) ->
+    Params#{<<"payload">> := iolist_to_binary(json:encode(P))};
+encode_payload(Params) ->
+    Params.
 
 get_message(ChatId, MessageId) ->
-    SQL =
-        <<
-            "SELECT id,\n"
-            "                    chat_id,\n"
-            "                    payload,\n"
-            "                    sender,\n"
-            "                    timestamp\n"
-            "            FROM message\n"
-            "            WHERE chat_id = $1 AND id = $2"
-        >>,
-    query1(SQL, [ChatId, MessageId]).
+    Q = kura_query:from(message),
+    Q1 = kura_query:select(Q, [id, chat_id, payload, sender, sender_info, timestamp]),
+    Q2 = kura_query:where(Q1, {chat_id, ChatId}),
+    Q3 = kura_query:where(Q2, {id, MessageId}),
+    one(Q3).
 
 get_chat_messages(ChatId) ->
-    SQL =
-        <<
-            "SELECT id,\n"
-            "                    chat_id,\n"
-            "                    payload,\n"
-            "                    sender,\n"
-            "                    timestamp\n"
-            "            FROM message\n"
-            "            WHERE chat_id = $1 \n"
-            "            ORDER BY timestamp ASC"
-        >>,
-    query(SQL, [ChatId]).
+    Q = kura_query:from(message),
+    Q1 = kura_query:select(Q, [id, chat_id, payload, sender, sender_info, timestamp]),
+    Q2 = kura_query:where(Q1, {chat_id, ChatId}),
+    Q3 = kura_query:order_by(Q2, [{timestamp, asc}]),
+    chatli_repo:all(Q3).
 
 get_filtered_messages(ChatId, QS) ->
-    Where = <<" WHERE chat_id=$1 ">>,
-    {Values, SqlWHERE} =
-        case QS of
-            #{
-                <<"after">> := After,
-                <<"before">> := Before
-            } ->
-                {
-                    [ChatId, binary_to_integer(After), binary_to_integer(Before)],
-                    <<Where/binary, " AND timestamp >= $2 AND timestamp <= $3 ">>
-                };
-            #{<<"after">> := After} ->
-                {[ChatId, binary_to_integer(After)], <<Where/binary, " AND timestamp >= $2 ">>};
-            #{<<"before">> := Before} ->
-                {[ChatId, binary_to_integer(Before)], <<Where/binary, " AND timestamp <= $2 ">>};
-            _ ->
-                {[ChatId], Where}
-        end,
-    SQL =
-        <<
-            "SELECT id,\n"
-            "                    chat_id,\n"
-            "                    payload,\n"
-            "                    sender,\n"
-            "                    sender_info,\n"
-            "                    timestamp\n"
-            "            FROM message",
-            SqlWHERE/binary,
-            "ORDER BY timestamp ASC"
-        >>,
-    query(SQL, Values).
+    Q = kura_query:from(message),
+    Q1 = kura_query:select(Q, [id, chat_id, payload, sender, sender_info, timestamp]),
+    Q2 = kura_query:where(Q1, {chat_id, ChatId}),
+    Q3 = maybe_after(Q2, QS),
+    Q4 = maybe_before(Q3, QS),
+    Q5 = kura_query:order_by(Q4, [{timestamp, asc}]),
+    chatli_repo:all(Q5).
 
-create_chat(#{
-    <<"id">> := Id,
-    <<"name">> := Name,
-    <<"description">> := Description,
-    <<"type">> := Type
-}) ->
-    SQL = <<"INSERT INTO chat (id, name, description, type) VALUES ($1, $2, $3, $4)">>,
-    query1(SQL, [Id, Name, Description, Type]).
+maybe_after(Q, #{<<"after">> := After}) ->
+    kura_query:where(Q, {timestamp, '>=', binary_to_integer(After)});
+maybe_after(Q, _) ->
+    Q.
+
+maybe_before(Q, #{<<"before">> := Before}) ->
+    kura_query:where(Q, {timestamp, '<=', binary_to_integer(Before)});
+maybe_before(Q, _) ->
+    Q.
+
+%% Chats
+
+create_chat(Params) ->
+    CS = kura_changeset:cast(chat, #{}, Params, [id, name, description, type]),
+    case chatli_repo:insert(CS) of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.
 
 get_chat(ChatId) ->
-    SQL = <<"SELECT * FROM chat WHERE id = $1">>,
-    query1(SQL, [ChatId]).
+    case chatli_repo:get(chat, ChatId) of
+        {ok, Chat} -> {ok, Chat};
+        {error, not_found} -> undefined
+    end.
 
 get_dm_chat(User1, User2) ->
     SQL =
-        <<
-            "SELECT chat.*\n"
-            "             FROM chat\n"
-            "             INNER JOIN participant AS p1 ON p1.user_id = $1 AND p1.chat_id = chat.id\n"
-            "             INNER JOIN participant AS p2 ON p2.user_id = $2 AND p2.chat_id = chat.id\n"
-            "             WHERE chat.type = '1to1' LIMIT 1"
-        >>,
-    query1(SQL, [User1, User2]).
+        <<"SELECT chat.*"
+          " FROM chat"
+          " INNER JOIN participant AS p1 ON p1.user_id = $1 AND p1.chat_id = chat.id"
+          " INNER JOIN participant AS p2 ON p2.user_id = $2 AND p2.chat_id = chat.id"
+          " WHERE chat.type = '1to1' LIMIT 1">>,
+    case chatli_repo:query(SQL, [User1, User2]) of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> undefined;
+        {error, _} = Error -> Error
+    end.
 
 get_all_chats(UserId) ->
     SQL =
-        <<
-            "SELECT chat.*\n"
-            "             FROM chat\n"
-            "             INNER JOIN participant\n"
-            "                ON participant.user_id = $1 AND\n"
-            "                   participant.chat_id = chat.id"
-        >>,
-    query(SQL, [UserId]).
+        <<"SELECT chat.*"
+          " FROM chat"
+          " INNER JOIN participant ON participant.user_id = $1 AND participant.chat_id = chat.id">>,
+    chatli_repo:query(SQL, [UserId]).
 
 delete_chat(ChatId) ->
-    SQL = <<"DELETE FROM chat WHERE id = $1">>,
-    query1(SQL, [ChatId]).
+    Q = kura_query:from(chat),
+    Q1 = kura_query:where(Q, {id, ChatId}),
+    case chatli_repo:delete_all(Q1) of
+        {ok, 1} -> ok;
+        {ok, 0} -> undefined;
+        {error, _} = Error -> Error
+    end.
+
+%% Participants
 
 add_participant(ChatId, UserId) ->
-    SQL = <<"INSERT INTO participant (chat_id, user_id) VALUES ($1, $2)">>,
-    query1(SQL, [ChatId, UserId]).
+    CS = kura_changeset:cast(participant, #{}, #{<<"chat_id">> => ChatId, <<"user_id">> => UserId}, [chat_id, user_id]),
+    case chatli_repo:insert(CS) of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.
 
 remove_participant(ChatId, UserId) ->
-    SQL = <<"DELETE FROM participant WHERE chat_id = $1 AND user_id = $2">>,
-    query1(SQL, [ChatId, UserId]).
+    Q = kura_query:from(participant),
+    Q1 = kura_query:where(Q, {chat_id, ChatId}),
+    Q2 = kura_query:where(Q1, {user_id, UserId}),
+    case chatli_repo:delete_all(Q2) of
+        {ok, 1} -> ok;
+        {ok, 0} -> undefined;
+        {error, _} = Error -> Error
+    end.
+
+get_participants(ChatId) ->
+    Q = kura_query:from(participant),
+    Q1 = kura_query:select(Q, [user_id]),
+    Q2 = kura_query:where(Q1, {chat_id, ChatId}),
+    chatli_repo:all(Q2).
 
 get_all_other_participants(ChatId, UserId) ->
     SQL =
-        <<
-            "SELECT chatli_user.id,\n"
-            "                    chatli_user.username,\n"
-            "                    chatli_user.email\n"
-            "             FROM participant\n"
-            "             INNER JOIN chatli_user ON chatli_user.id = participant.user_id\n"
-            "             WHERE participant.chat_id = $1 AND participant.user_id != $2"
-        >>,
-    query(SQL, [ChatId, UserId]).
+        <<"SELECT chatli_user.id, chatli_user.username, chatli_user.email"
+          " FROM participant"
+          " INNER JOIN chatli_user ON chatli_user.id = participant.user_id"
+          " WHERE participant.chat_id = $1 AND participant.user_id != $2">>,
+    chatli_repo:query(SQL, [ChatId, UserId]).
 
-get_participants(ChatId) ->
-    SQL = <<"SELECT user_id FROM participant WHERE chat_id = $1">>,
-    query(SQL, [ChatId]).
+%% Callbacks
 
 create_callback(CallbackId, UserId, Url) ->
-    SQL =
-        <<
-            "INSERT INTO callback\n"
-            "                (\n"
-            "                  id,\n"
-            "                  user_id,\n"
-            "                  url\n"
-            "                )\n"
-            "             VALUES\n"
-            "               (\n"
-            "                 $1,\n"
-            "                 $2,\n"
-            "                 $3\n"
-            "               )"
-        >>,
-    query1(SQL, [CallbackId, UserId, Url]).
-
-get_callback(CallbackId) ->
-    SQL = <<"SELECT * FROM callback WHERE id = $1">>,
-    query1(SQL, [CallbackId]).
-
-get_user_callbacks(UserId) ->
-    SQL = <<"SELECT url FROM callback where user_id = $1">>,
-    query(SQL, [UserId]).
-
-delete_callback(CallbackId) ->
-    SQL = <<"DELETE FROM callback WHERE id = $1">>,
-    query1(SQL, [CallbackId]).
-
-create_attachment(AttachmentId, ChatId, Mime, ByteSize) ->
-    SQL = <<"INSERT INTO attachment (id, chat_id, mime, length) VALUES ($1, $2, $3, $4)">>,
-    query1(SQL, [AttachmentId, ChatId, Mime, ByteSize]).
-
-get_attachment(AttachmentId, ChatId) ->
-    SQL = <<"SELECT * FROM attachment WHERE id = $1 AND chat_id = $2">>,
-    query1(SQL, [AttachmentId, ChatId]).
-
-% Expect 1 result
-query1(SQL, Values) ->
-    case pgo:query(SQL, Values) of
-        #{
-            command := insert,
-            num_rows := 1
-        } ->
-            ok;
-        #{
-            command := select,
-            rows := []
-        } ->
-            undefined;
-        #{
-            command := select,
-            rows := [Row]
-        } ->
-            {ok, Row};
-        #{
-            command := update,
-            num_rows := Num
-        } ->
-            {ok, Num};
-        #{
-            command := delete,
-            num_rows := 1
-        } ->
-            ok;
-        #{command := delete} ->
-            undefined;
-        {error, Error} ->
-            logger:error("Error: ~p on SQL ~p Values ~p", [Error, SQL, Values]),
-            {error, Error}
+    CS = kura_changeset:cast(callback, #{}, #{<<"id">> => CallbackId, <<"user_id">> => UserId, <<"url">> => Url}, [id, user_id, url]),
+    case chatli_repo:insert(CS) of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
     end.
 
-query(SQL, Values) ->
-    case pgo:query(SQL, Values) of
-        #{
-            command := insert,
-            num_rows := Num
-        } ->
-            {ok, Num};
-        #{
-            command := select,
-            rows := Rows
-        } ->
-            {ok, Rows};
-        #{
-            command := update,
-            num_rows := Num
-        } ->
-            {ok, Num};
-        #{
-            command := delete,
-            num_rows := Num
-        } ->
-            {ok, Num};
-        {error, Error} ->
-            logger:error("Error: ~p on SQL ~p Values ~p", [Error, SQL, Values]),
-            {error, Error}
+get_callback(CallbackId) ->
+    case chatli_repo:get(callback, CallbackId) of
+        {ok, Result} -> {ok, Result};
+        {error, not_found} -> undefined
+    end.
+
+get_user_callbacks(UserId) ->
+    Q = kura_query:from(callback),
+    Q1 = kura_query:select(Q, [url]),
+    Q2 = kura_query:where(Q1, {user_id, UserId}),
+    chatli_repo:all(Q2).
+
+delete_callback(CallbackId) ->
+    Q = kura_query:from(callback),
+    Q1 = kura_query:where(Q, {id, CallbackId}),
+    case chatli_repo:delete_all(Q1) of
+        {ok, 1} -> ok;
+        {ok, 0} -> undefined;
+        {error, _} = Error -> Error
+    end.
+
+%% Attachments
+
+create_attachment(AttachmentId, ChatId, Mime, ByteSize) ->
+    CS = kura_changeset:cast(attachment, #{}, #{
+        <<"id">> => AttachmentId,
+        <<"chat_id">> => ChatId,
+        <<"mime">> => Mime,
+        <<"length">> => ByteSize
+    }, [id, chat_id, mime, length]),
+    case chatli_repo:insert(CS) of
+        {ok, _} -> ok;
+        {error, _} = Error -> Error
+    end.
+
+get_attachment(AttachmentId, ChatId) ->
+    Q = kura_query:from(attachment),
+    Q1 = kura_query:where(Q, {id, AttachmentId}),
+    Q2 = kura_query:where(Q1, {chat_id, ChatId}),
+    one(Q2).
+
+%% Internal
+
+one(Q) ->
+    case chatli_repo:one(Q) of
+        {ok, Row} -> {ok, Row};
+        {error, not_found} -> undefined;
+        {error, _} = Error -> Error
     end.
