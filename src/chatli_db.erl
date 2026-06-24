@@ -155,7 +155,12 @@ get_all_other_participants(ChatId, UserId) ->
 %% Callbacks
 
 create_callback(CallbackId, UserId, Url) ->
-    CS = kura_changeset:cast(callback, #{}, #{<<"id">> => CallbackId, <<"user_id">> => UserId, <<"url">> => Url}, [id, user_id, url]),
+    CS = kura_changeset:cast(
+        callback,
+        #{},
+        #{<<"id">> => CallbackId, <<"user_id">> => UserId, <<"url">> => Url},
+        [id, user_id, url]
+    ),
     case chatli_repo:insert(CS) of
         {ok, _} -> ok;
         {error, _} = Error -> Error
