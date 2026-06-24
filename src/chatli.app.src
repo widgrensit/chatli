@@ -11,6 +11,8 @@
     stdlib,
     nova,
     pgo,
+    kura,
+    kura_postgres,
     jwerl,
     runtime_tools,
     mimerl

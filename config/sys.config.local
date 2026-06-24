@@ -4,23 +4,18 @@
     {kernel, [
         {logger_level, debug}
     ]},
-    {pgo, [
-        {pools, [
-            {default, #{
-                pool_size => 2,
+    {kura, [
+        {repos, #{
+            chatli_repo => #{
+                backend => kura_backend_postgres,
                 host => "localhost",
                 port => 5555,
                 database => "chatli",
                 user => "postgres",
                 password => "root",
-                idle_interval => 500,
-                decode_opts => [return_rows_as_maps, column_name_as_atom]
-            }}
-        ]}
-    ]},
-    {pg_types, [
-        {uuid_format, string},
-        {json_config, {chatli_json, #{}, #{}}}
+                pool_size => 2
+            }
+        }}
     ]},
     {nova, [
         {cowboy_configuration, #{
@@ -42,6 +37,8 @@
             }}
         ]}
     ]},
-    {chatli, [{download_path, "./priv/attachments/"}]}
+    {chatli, [
+        {download_path, "./priv/attachments/"}
+    ]}
     %% Please change your app.src-file instead if you intend to add app-specific configurations
 ].

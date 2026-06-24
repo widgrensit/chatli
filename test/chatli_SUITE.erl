@@ -4,9 +4,9 @@
 
 -include_lib("common_test/include/ct.hrl").
 
--define(BASEPATH, ct:get_config(basepath)).
--define(IP, ct:get_config(ip)).
--define(PORT, ct:get_config(port)).
+-define(BASEPATH, <<"http://localhost:8090">>).
+-define(IP, "localhost").
+-define(PORT, 8090).
 
 %%--------------------------------------------------------------------
 %% @spec suite() -> Info
@@ -55,7 +55,7 @@ init_per_suite(_Config) ->
     ),
     #{<<"access_token">> := Token} = decode(LoginRespBody),
     [_, Payload, _] = jhn_bstring:tokens(Token, <<".">>),
-    UserObj1 = decode(base64:decode(Payload)),
+    UserObj1 = decode(base64:decode(Payload, #{mode => urlsafe, padding => false})),
     #{status := {200, _}, body := LoginRespBody2} = jhn_shttpc:post(
         LoginPath,
         encode(#{
@@ -66,7 +66,8 @@ init_per_suite(_Config) ->
     ),
     #{<<"access_token">> := Token2} = decode(LoginRespBody2),
     [_, Payload2, _] = jhn_bstring:tokens(Token2, <<".">>),
-    #{<<"id">> := UserId2} = UserObj2 = decode(base64:decode(Payload2)),
+    #{<<"id">> := UserId2} =
+        UserObj2 = decode(base64:decode(Payload2, #{mode => urlsafe, padding => false})),
     CallbackPath = [?BASEPATH, <<"/v1/callback">>],
     CallbackObject = #{
         type => <<"email">>,
@@ -299,13 +300,7 @@ send_message(Config) ->
         opts(Token)
     ),
     #{<<"id">> := MessageId} = decode(MessageBody),
-    receive
-        {gun_ws, _ConnPid, _StreamRef0, {text, Msg}} ->
-            io:format("~p", [Msg]),
-            #{<<"id">> := MessageId} = decode(Msg)
-    after 8000 ->
-        exit(timeout)
-    end.
+    await_ws_message(MessageId).
 
 get_all_message(Config) ->
     #{token := Token} = proplists:get_value(user1, Config),
@@ -380,13 +375,7 @@ upload_attachment(Config) ->
         Path, Formatted, opts(attachment, Token, Boundary)
     ),
     #{<<"id">> := MessageId} = decode(MessageBody),
-    receive
-        {gun_ws, _ConnPid, _StreamRef0, {text, Msg}} ->
-            io:format("~p", [Msg]),
-            #{<<"id">> := MessageId} = decode(Msg)
-    after 8000 ->
-        exit(timeout)
-    end,
+    await_ws_message(MessageId),
     MessagePath = [?BASEPATH, <<"/client/chat/">>, ChatId, <<"/message/">>, MessageId],
     #{status := {200, _}, body := MessageRespBody} = jhn_shttpc:get(MessagePath, opts(Token)),
     #{
@@ -438,6 +427,19 @@ opts(attachment, Token, Boundary) ->
 decode(Json) ->
     {ok, Decode} = thoas:decode(Json),
     Decode.
+
+%% The server redelivers undelivered messages on reconnect, so skip
+%% anything that isn't the message we are waiting for.
+await_ws_message(MessageId) ->
+    receive
+        {gun_ws, _ConnPid, _StreamRef, {text, Msg}} ->
+            case decode(Msg) of
+                #{<<"id">> := MessageId} -> ok;
+                _ -> await_ws_message(MessageId)
+            end
+    after 8000 ->
+        exit(timeout)
+    end.
 
 encode(Json) ->
     thoas:encode(Json).
