@@ -1,8 +1,8 @@
 -module(chatli_multipart_plugin).
 
 -export([
-    pre_request/2,
-    post_request/2,
+    pre_request/4,
+    post_request/4,
     plugin_info/0
 ]).
 
@@ -11,29 +11,28 @@
 %% Pre-request callback
 %% @end
 %%--------------------------------------------------------------------
--spec pre_request(Req :: cowboy_req:req(), Options :: map()) ->
-    {ok, Req0 :: cowboy_req:req()}
-    | {stop, Req0 :: cowboy_req:req()}
-    | {error, Reason :: term()}.
+-spec pre_request(Req :: cowboy_req:req(), Env :: any(), Options :: map(), State :: any()) ->
+    {ok, Req0 :: cowboy_req:req(), NewState :: any()}.
 pre_request(
-    #{headers := #{<<"content-type">> := <<"multipart/form-data", _/binary>>}} = Req, _Options
+    #{headers := #{<<"content-type">> := <<"multipart/form-data", _/binary>>}} = Req,
+    _Env,
+    _Options,
+    State
 ) ->
     {Req1, FormData} = multipart(Req, []),
-    {ok, Req1#{multipart_data => FormData}};
-pre_request(Req, _Options) ->
-    {ok, Req}.
+    {ok, Req1#{multipart_data => FormData}, State};
+pre_request(Req, _Env, _Options, State) ->
+    {ok, Req, State}.
 
 %%--------------------------------------------------------------------
 %% @doc
 %% Post-request callback
 %% @end
 %%--------------------------------------------------------------------
--spec post_request(Req :: cowboy_req:req(), Options :: map()) ->
-    {ok, Req0 :: cowboy_req:req()}
-    | {stop, Req0 :: cowboy_req:req()}
-    | {error, Reason :: term()}.
-post_request(Req, _Options) ->
-    {ok, Req}.
+-spec post_request(Req :: cowboy_req:req(), Env :: any(), Options :: map(), State :: any()) ->
+    {ok, Req0 :: cowboy_req:req(), NewState :: any()}.
+post_request(Req, _Env, _Options, State) ->
+    {ok, Req, State}.
 
 %%--------------------------------------------------------------------
 %% @doc
