@@ -1,4 +1,5 @@
 -module(chatli_multipart_plugin).
+-behaviour(nova_plugin).
 
 -export([
     pre_request/4,
@@ -6,11 +7,6 @@
     plugin_info/0
 ]).
 
-%%--------------------------------------------------------------------
-%% @doc
-%% Pre-request callback
-%% @end
-%%--------------------------------------------------------------------
 -spec pre_request(Req :: cowboy_req:req(), Env :: any(), Options :: map(), State :: any()) ->
     {ok, Req0 :: cowboy_req:req(), NewState :: any()}.
 pre_request(
@@ -24,29 +20,29 @@ pre_request(
 pre_request(Req, _Env, _Options, State) ->
     {ok, Req, State}.
 
-%%--------------------------------------------------------------------
-%% @doc
-%% Post-request callback
-%% @end
-%%--------------------------------------------------------------------
 -spec post_request(Req :: cowboy_req:req(), Env :: any(), Options :: map(), State :: any()) ->
     {ok, Req0 :: cowboy_req:req(), NewState :: any()}.
 post_request(Req, _Env, _Options, State) ->
     {ok, Req, State}.
 
-%%--------------------------------------------------------------------
-%% @doc
-%% nova_plugin callback. Returns information about the plugin.
-%% @end
-%%--------------------------------------------------------------------
 -spec plugin_info() ->
-    {Title :: binary(), Version :: binary(), Author :: binary(), Description :: binary(), [
-        {Key :: atom(), OptionDescription :: atom()}
-    ]}.
+    #{
+        title := binary(),
+        version := binary(),
+        url := binary(),
+        authors := [binary()],
+        description := binary(),
+        options => [{atom(), binary()}]
+    }.
 plugin_info() ->
-    {<<"Plugin name plugin">>, <<"0.0.1">>, <<"User <user@email.com">>, <<"Descriptive text">>,
-        %% Options is specified as {Key, Description}
-        []}.
+    #{
+        title => ~"chatli multipart plugin",
+        version => ~"0.1.0",
+        url => ~"https://github.com/widgrensit/chatli",
+        authors => [~"Widgrens IT AB"],
+        description => ~"Parses multipart/form-data bodies into multipart_data on the request",
+        options => []
+    }.
 
 multipart(Req0, Acc) ->
     case cowboy_req:read_part(Req0) of
