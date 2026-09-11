@@ -88,7 +88,7 @@ init_per_suite(_Config) ->
         ChatPath, encode(Chat), opts(Token)
     ),
     Device = #{<<"name">> => <<"my device">>},
-    DeviceId = list_to_binary(uuid:uuid_to_string(uuid:get_v4())),
+    DeviceId = chatli_uuid:get_v4(),
     DevicePath = [?BASEPATH, <<"/client/device/">>, DeviceId],
     #{status := {200, _}} = jhn_shttpc:put(DevicePath, encode(Device), opts(Token)),
     [
