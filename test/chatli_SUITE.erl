@@ -1,6 +1,28 @@
 -module(chatli_SUITE).
 
--compile(export_all).
+-export([
+    suite/0,
+    all/0,
+    groups/0,
+    init_per_suite/1,
+    end_per_suite/1,
+    init_per_group/2,
+    end_per_group/2,
+    init_per_testcase/2,
+    end_per_testcase/2,
+    get_all_users/1,
+    list_participant/1,
+    get_all_chats/1,
+    create_same_chat_again/1,
+    send_message/1,
+    get_all_message/1,
+    get_filtered_message/1,
+    get_historic_message/1,
+    upload_attachment/1,
+    remove_participant/1,
+    get_all_devices/1,
+    get_callback/1
+]).
 
 -include_lib("common_test/include/ct.hrl").
 
@@ -42,7 +64,6 @@ init_per_suite(_Config) ->
     },
     Path = [?BASEPATH, <<"/v1/signup">>],
     #{status := {201, _}} = jhn_shttpc:post(Path, encode(User1), opts()),
-    Path = [?BASEPATH, <<"/v1/signup">>],
     #{status := {201, _}} = jhn_shttpc:post(Path, encode(User2), opts()),
     LoginPath = [?BASEPATH, <<"/v1/login">>],
     #{status := {200, _}, body := LoginRespBody} = jhn_shttpc:post(
@@ -88,7 +109,7 @@ init_per_suite(_Config) ->
         ChatPath, encode(Chat), opts(Token)
     ),
     Device = #{<<"name">> => <<"my device">>},
-    DeviceId = list_to_binary(uuid:uuid_to_string(uuid:get_v4())),
+    DeviceId = chatli_uuid:get_v4(),
     DevicePath = [?BASEPATH, <<"/client/device/">>, DeviceId],
     #{status := {200, _}} = jhn_shttpc:put(DevicePath, encode(Device), opts(Token)),
     [
@@ -233,13 +254,6 @@ get_all_users(Config) ->
     #{status := {200, _}, body := RespBody} = jhn_shttpc:get(Path, opts(Token)),
     4 = length(decode(RespBody)).
 
-add_participant(Config) ->
-    #{token := Token} = proplists:get_value(user1, Config),
-    #{object := #{id := UserId2}} = proplists:get_value(user2, Config),
-    #{id := ChatId} = proplists:get_value(chat, Config),
-    Path = [?BASEPATH, <<"/client/chat/">>, ChatId, <<"/participant">>],
-    #{status := {201, _}} = jhn_shttpc:post(Path, encode(#{id => UserId2}), opts(Token)).
-
 list_participant(Config) ->
     #{token := Token} = proplists:get_value(user1, Config),
     #{<<"id">> := ChatId} = proplists:get_value(chat, Config),
@@ -310,7 +324,7 @@ get_all_message(Config) ->
     [#{<<"id">> := MessageId}] = [MessageObj] = decode(RespBody),
     MessagePath = [?BASEPATH, <<"/client/chat/">>, ChatId, <<"/message/">>, MessageId],
     #{status := {200, _}, body := MessageRespBody} = jhn_shttpc:get(MessagePath, opts(Token)),
-    #{<<"id">> := MessageId} = MessageObj = decode(MessageRespBody).
+    MessageObj = decode(MessageRespBody).
 
 get_filtered_message(Config) ->
     #{token := Token} = proplists:get_value(user1, Config),
@@ -321,7 +335,7 @@ get_filtered_message(Config) ->
     [#{<<"id">> := MessageId}] = [MessageObj] = decode(RespBody),
     MessagePath = [?BASEPATH, <<"/client/chat/">>, ChatId, <<"/message/">>, MessageId],
     #{status := {200, _}, body := MessageRespBody} = jhn_shttpc:get(MessagePath, opts(Token)),
-    #{<<"id">> := MessageId} = MessageObj = decode(MessageRespBody),
+    MessageObj = decode(MessageRespBody),
     Path2 = [?BASEPATH, <<"/client/chat/">>, ChatId, <<"/message?before=">>, StartTimestamp],
     #{status := {200, _}, body := RespBody2} = jhn_shttpc:get(Path2, opts(Token)),
     [] = decode(RespBody2).
@@ -344,7 +358,7 @@ get_all_devices(Config) ->
     DeviceId = DeviceId2,
     DevicePath = [?BASEPATH, <<"/client/device/">>, DeviceId],
     #{status := {200, _}, body := DeviceRespBody} = jhn_shttpc:get(DevicePath, opts(Token)),
-    #{<<"id">> := DeviceId} = DeviceObj = decode(DeviceRespBody).
+    DeviceObj = decode(DeviceRespBody).
 
 get_callback(Config) ->
     #{<<"id">> := CallbackId} = proplists:get_value(callback, Config),

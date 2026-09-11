@@ -14,6 +14,6 @@ fields() -> [
     #kura_field{name = sender, type = uuid, nullable = false},
     #kura_field{name = type, type = string},
     #kura_field{name = action, type = string},
-    #kura_field{name = timestamp, type = integer},
+    #kura_field{name = timestamp, type = bigint},
     #kura_field{name = sender_info, type = jsonb}
 ].

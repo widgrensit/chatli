@@ -32,7 +32,6 @@
             {pre_request, chatli_multipart_plugin, #{}},
             {pre_request, nova_request_plugin, #{
                 decode_json_body => true,
-                parse_bindings => true,
                 parse_qs => true
             }}
         ]}
