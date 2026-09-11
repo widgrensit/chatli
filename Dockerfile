@@ -11,7 +11,7 @@ RUN apk add --update git
 RUN rebar3 release
 
 # Build stage 1
-FROM alpine
+FROM alpine:3.23
 
 # Install some libs
 RUN apk add --no-cache openssl && \
